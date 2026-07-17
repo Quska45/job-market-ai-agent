@@ -19,6 +19,10 @@ from job_market_ai_agent.bot.discord_job_bot import (  # noqa: E402
 )
 
 
+def _log(message: str) -> None:
+    print(message, flush=True)
+
+
 def main() -> None:
     try:
         import discord
@@ -36,7 +40,7 @@ def main() -> None:
 
     @client.event
     async def on_ready() -> None:
-        print(f"discord_job_bot_ready: {client.user}")
+        _log(f"discord_job_bot_ready: {client.user}")
 
     @client.event
     async def on_message(message) -> None:
@@ -45,17 +49,22 @@ def main() -> None:
         command = parse_job_command(message.content, config.command_prefix)
         if command is None:
             return
+        _log(f"job_command_received: use_llm={command.use_llm} question={command.question!r}")
         if command.question in {"help", "도움말"}:
             await message.channel.send(build_help_message(config.command_prefix))
+            _log("job_help_sent")
             return
 
         try:
             results = await asyncio.to_thread(search_discord_job_candidates, command.question, config)
+            _log(f"job_candidates_found: count={len(results)}")
             for chunk in split_discord_message(
                 format_discord_job_candidates(results, include_llm_notice=command.use_llm)
             ):
                 await message.channel.send(chunk)
+            _log("job_candidates_sent")
             if not command.use_llm:
+                _log("job_command_done_without_llm")
                 return
             async with message.channel.typing():
                 response = await asyncio.to_thread(
@@ -66,7 +75,9 @@ def main() -> None:
                 )
             for chunk in split_discord_message(response):
                 await message.channel.send(chunk)
+            _log("job_llm_answer_sent")
         except Exception as error:
+            _log(f"job_command_error: {error!r}")
             await message.channel.send(
                 "요청 처리 중 오류가 발생했습니다. "
                 f"검색 후보를 먼저 확인해 주세요. 오류: {error}"
