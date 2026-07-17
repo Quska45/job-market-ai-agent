@@ -11,7 +11,7 @@ from job_market_ai_agent.qa.search import JobSearchResult, summarize_job_for_qa
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/chat"
 DEFAULT_QA_MODEL = "qwen2.5:3b"
-DEFAULT_QA_TIMEOUT_SECONDS = 300
+DEFAULT_QA_TIMEOUT_SECONDS = 180
 
 
 class QAResponseError(RuntimeError):
@@ -28,19 +28,28 @@ def answer_question_with_ollama(
         return "관련 채용공고를 찾지 못했습니다. 질문의 지역, 직무, 기술 키워드를 조금 더 구체적으로 입력해 주세요."
 
     timeout_seconds = float(os.getenv("OLLAMA_QA_TIMEOUT_SECONDS", DEFAULT_QA_TIMEOUT_SECONDS))
-    response = httpx.post(
-        url,
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": _system_prompt()},
-                {"role": "user", "content": build_qa_prompt(question, results)},
-            ],
-            "stream": False,
-            "options": {"temperature": 0, "num_ctx": 8192},
-        },
-        timeout=timeout_seconds,
-    )
+    try:
+        response = httpx.post(
+            url,
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": _system_prompt()},
+                    {"role": "user", "content": build_qa_prompt(question, results)},
+                ],
+                "stream": False,
+                "options": {"temperature": 0, "num_ctx": 4096},
+            },
+            timeout=timeout_seconds,
+        )
+    except httpx.TimeoutException as error:
+        raise QAResponseError(
+            f"Ollama 답변 생성이 {timeout_seconds:g}초 안에 끝나지 않았습니다. "
+            "검색 후보를 먼저 확인하거나 질문을 더 짧게 입력해 주세요."
+        ) from error
+    except httpx.ConnectError as error:
+        raise QAResponseError("Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요.") from error
+
     if response.status_code >= 400:
         raise QAResponseError(f"Ollama API error {response.status_code}: {response.text[:500]}")
     payload = response.json()
@@ -95,4 +104,3 @@ Use only the provided postings as evidence.
 The user is an experienced developer with 8-9 years of professional experience.
 Do not invent companies, deadlines, skills, URLs, majors, benefits, or requirements.
 """
-

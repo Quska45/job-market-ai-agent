@@ -6,11 +6,14 @@ from job_market_ai_agent.bot.discord_job_bot import (
     DiscordBotConfig,
     DiscordBotConfigurationError,
     answer_discord_job_question,
+    answer_discord_job_question_from_results,
     build_help_message,
     extract_job_question,
+    format_discord_job_candidates,
     load_discord_bot_config,
     split_discord_message,
 )
+from job_market_ai_agent.qa.search import JobSearchResult
 
 
 def test_extract_job_question() -> None:
@@ -56,6 +59,19 @@ def test_load_discord_bot_config_requires_token(tmp_path, monkeypatch) -> None:
         load_discord_bot_config(tmp_path / ".env")
 
 
+def test_format_discord_job_candidates_adds_progress_message() -> None:
+    result = JobSearchResult(
+        job={"title": "AI Engineer", "company": {"name": "Example"}, "dates": {}, "url": "u"},
+        score=3,
+        matched_terms=["ai"],
+    )
+
+    output = format_discord_job_candidates([result])
+
+    assert "검색 후보" in output
+    assert "상세 답변을 생성 중" in output
+
+
 def test_answer_discord_job_question_delegates(monkeypatch) -> None:
     calls = []
 
@@ -74,3 +90,17 @@ def test_answer_discord_job_question_delegates(monkeypatch) -> None:
     assert answer_discord_job_question("질문", config) == "answer"
     assert calls == [("질문", Path("jobs.json"), 2, "model")]
 
+
+def test_answer_discord_job_question_from_results_delegates(monkeypatch) -> None:
+    calls = []
+
+    def fake_answer(question, results, model):
+        calls.append((question, results, model))
+        return "answer"
+
+    monkeypatch.setattr("job_market_ai_agent.bot.discord_job_bot.answer_question_with_ollama", fake_answer)
+    results = [JobSearchResult(job={}, score=1, matched_terms=[])]
+    config = DiscordBotConfig(token="token", model="model")
+
+    assert answer_discord_job_question_from_results("질문", results, config) == "answer"
+    assert calls == [("질문", results, "model")]

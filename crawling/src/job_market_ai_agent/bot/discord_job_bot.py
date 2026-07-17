@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from job_market_ai_agent.notifications.env import load_env_file
+from job_market_ai_agent.qa.answer import answer_question_with_ollama, format_search_results
+from job_market_ai_agent.qa.search import JobSearchResult, load_jobs, search_jobs
 from job_market_ai_agent.qa.service import DEFAULT_JOBS_INPUT, answer_job_question
 
 
@@ -13,7 +15,7 @@ class DiscordBotConfig:
     token: str
     command_prefix: str = "!job"
     input_path: Path = Path(DEFAULT_JOBS_INPUT)
-    limit: int = 5
+    limit: int = 3
     model: str = "qwen2.5:3b"
 
 
@@ -30,7 +32,7 @@ def load_discord_bot_config(env_path: Path = Path(".env")) -> DiscordBotConfig:
         token=token,
         command_prefix=os.getenv("DISCORD_BOT_COMMAND_PREFIX", "!job"),
         input_path=Path(os.getenv("JOB_QA_INPUT", DEFAULT_JOBS_INPUT)),
-        limit=int(os.getenv("JOB_QA_LIMIT", "5")),
+        limit=int(os.getenv("JOB_QA_LIMIT", "3")),
         model=os.getenv("JOB_QA_MODEL", "qwen2.5:3b"),
     )
 
@@ -58,6 +60,15 @@ def split_discord_message(message: str, limit: int = 1900) -> list[str]:
     return chunks
 
 
+def search_discord_job_candidates(question: str, config: DiscordBotConfig) -> list[JobSearchResult]:
+    jobs = load_jobs(config.input_path)
+    return search_jobs(question, jobs, limit=config.limit)
+
+
+def format_discord_job_candidates(results: list[JobSearchResult]) -> str:
+    return format_search_results(results) + "\n\n상세 답변을 생성 중입니다. 로컬 Ollama 상태에 따라 시간이 걸릴 수 있습니다."
+
+
 def answer_discord_job_question(question: str, config: DiscordBotConfig) -> str:
     return answer_job_question(
         question,
@@ -65,3 +76,11 @@ def answer_discord_job_question(question: str, config: DiscordBotConfig) -> str:
         limit=config.limit,
         model=config.model,
     )
+
+
+def answer_discord_job_question_from_results(
+    question: str,
+    results: list[JobSearchResult],
+    config: DiscordBotConfig,
+) -> str:
+    return answer_question_with_ollama(question, results, model=config.model)
