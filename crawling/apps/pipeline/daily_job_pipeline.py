@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report-format", choices=["csv", "markdown"], default="csv")
     parser.add_argument("--notify", action="append", choices=["console", "discord"], default=None)
     parser.add_argument("--skip-analysis", action="store_true")
+    parser.add_argument("--retry-of", default=None, help="Run ID this execution retries.")
     return parser.parse_args()
 
 
@@ -49,6 +50,8 @@ def main() -> None:
     notify_channels = args.notify or ["console"]
     output_json = _expected_output_path(args.keyword)
     history.output_json = str(output_json)
+    history.retry_of = args.retry_of
+    history.run_config = _build_run_config(args, notify_channels)
     history.save()
 
     try:
@@ -123,6 +126,22 @@ def main() -> None:
         raise SystemExit(1) from error
 
 
+def _build_run_config(args: argparse.Namespace, notify_channels: list[str]) -> dict[str, Any]:
+    return {
+        "keyword": args.keyword,
+        "max_jobs": args.max_jobs,
+        "max_pages": args.max_pages,
+        "delay": args.delay,
+        "search_url": args.search_url,
+        "provider": args.provider,
+        "model": args.model,
+        "analysis_max_jobs": args.analysis_max_jobs,
+        "report_format": args.report_format,
+        "notify": notify_channels,
+        "skip_analysis": args.skip_analysis,
+    }
+
+
 def _notify_failure(history: PipelineRunHistory, channels: list[str]) -> None:
     try:
         sent_channels = notify(build_failure_summary(history), channels)
@@ -177,4 +196,5 @@ def _run(command: list[str], history: PipelineRunHistory) -> None:
 
 if __name__ == "__main__":
     main()
+
 

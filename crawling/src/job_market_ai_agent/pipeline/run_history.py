@@ -50,6 +50,8 @@ class PipelineRunHistory:
     analyzed_jobs: int | None = None
     notified_channels: list[str] = field(default_factory=list)
     steps: list[StepRecord] = field(default_factory=list)
+    run_config: dict[str, Any] = field(default_factory=dict)
+    retry_of: str | None = None
 
     @classmethod
     def create(cls, base_dir: Path, run_id: str | None = None) -> "PipelineRunHistory":
@@ -146,6 +148,8 @@ class PipelineRunHistory:
             "analyzed_jobs": self.analyzed_jobs,
             "notified_channels": self.notified_channels,
             "steps": [step.to_dict() for step in self.steps],
+            "run_config": self.run_config,
+            "retry_of": self.retry_of,
         }
 
 
@@ -164,6 +168,37 @@ def load_run_record(run_id: str, base_dir: Path) -> dict[str, Any]:
         raise FileNotFoundError(f"Run history not found: {run_json}")
     with run_json.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def build_retry_command(record: dict[str, Any], python_executable: str, pipeline_script: str) -> list[str]:
+    config = record.get("run_config") or {}
+    if not config:
+        raise ValueError(f"Run {record.get('run_id')} does not contain run_config for retry.")
+
+    command = [python_executable, pipeline_script]
+    option_map = {
+        "keyword": "--keyword",
+        "max_jobs": "--max-jobs",
+        "max_pages": "--max-pages",
+        "delay": "--delay",
+        "search_url": "--search-url",
+        "provider": "--provider",
+        "model": "--model",
+        "analysis_max_jobs": "--analysis-max-jobs",
+        "report_format": "--report-format",
+    }
+    for key, option in option_map.items():
+        if key in config and config[key] is not None:
+            command.extend([option, str(config[key])])
+
+    for channel in config.get("notify") or ["console"]:
+        command.extend(["--notify", str(channel)])
+
+    if config.get("skip_analysis"):
+        command.append("--skip-analysis")
+    if record.get("run_id"):
+        command.extend(["--retry-of", str(record["run_id"])])
+    return command
 
 
 def format_run_list(records: list[dict[str, Any]]) -> str:
@@ -190,6 +225,7 @@ def format_run_detail(record: dict[str, Any]) -> str:
         f"finished_at: {_text(record.get('finished_at'))}",
         f"failed_step: {_text(record.get('failed_step') or '-')}",
         f"error_message: {_text(record.get('error_message') or '-')}",
+        f"retry_of: {_text(record.get('retry_of') or '-')}",
         f"output_json: {_text(record.get('output_json') or '-')}",
         f"report_path: {_text(record.get('report_path') or '-')}",
         f"collected_jobs: {_text(record.get('collected_jobs') if record.get('collected_jobs') is not None else '-')}",
