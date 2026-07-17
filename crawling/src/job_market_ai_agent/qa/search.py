@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from job_market_ai_agent.qa.query import QueryIntent, classify_deadline_text, parse_query_intent
+from job_market_ai_agent.qa.query import (
+    DEVELOPER_ROLE_ALIASES,
+    NON_DEVELOPER_ROLE_ALIASES,
+    ROLE_KEYWORDS,
+    QueryIntent,
+    classify_deadline_text,
+    parse_query_intent,
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,8 @@ def _matches_required_filters(job: dict[str, Any], intent: QueryIntent) -> bool:
     searchable = _searchable_text(job)
     if intent.regions and not any(region.lower() in searchable for region in intent.regions):
         return False
+    if intent.excluded_roles and any(_matches_excluded_role(job, role) for role in intent.excluded_roles):
+        return False
     if intent.deadline_types:
         dates = job.get("dates") or {}
         deadline_type = classify_deadline_text(dates.get("deadline_text"), dates.get("deadline"))
@@ -102,6 +111,7 @@ def _score_job(job: dict[str, Any], intent: QueryIntent) -> tuple[int, list[str]
     score += sum(2 for term in matched_terms if term in high_value_text)
 
     score += _structured_bonus(job, intent)
+    score += _developer_role_bonus(job, intent)
     fit_score = analysis.get("fit_for_8_9_year_developer")
     if isinstance(fit_score, int | float):
         score += round(float(fit_score) * (5 if intent.experienced else 3))
@@ -115,10 +125,76 @@ def _structured_bonus(job: dict[str, Any], intent: QueryIntent) -> int:
     bonus = 0
     bonus += 4 * sum(1 for region in intent.regions if region.lower() in searchable)
     bonus += 3 * sum(1 for skill in intent.skills if skill in searchable)
-    bonus += 3 * sum(1 for role in intent.role_terms if role in searchable)
+    bonus += 3 * sum(1 for role in intent.role_terms if _matches_role(job, role))
     if intent.experienced and job.get("analysis"):
         bonus += 2
     return bonus
+
+
+def _developer_role_bonus(job: dict[str, Any], intent: QueryIntent) -> int:
+    if not intent.prefer_developer_roles:
+        return 0
+    searchable = _role_searchable_text(job)
+    bonus = 0
+    if any(alias in searchable for alias in DEVELOPER_ROLE_ALIASES):
+        bonus += 5
+    if any(alias in searchable for alias in NON_DEVELOPER_ROLE_ALIASES):
+        bonus -= 6
+    if intent.role_terms and not any(_matches_role(job, role) for role in intent.role_terms):
+        bonus -= 4
+    return bonus
+
+
+def _matches_role(job: dict[str, Any], role: str) -> bool:
+    aliases = ROLE_KEYWORDS.get(role, [])
+    if not aliases:
+        return False
+    searchable = _role_searchable_text(job)
+    return any(alias in searchable for alias in aliases)
+
+
+def _matches_excluded_role(job: dict[str, Any], role: str) -> bool:
+    aliases = ROLE_KEYWORDS.get(role, [])
+    if not aliases:
+        return False
+    searchable = _strict_role_searchable_text(job)
+    return any(alias in searchable for alias in aliases)
+
+
+def _role_searchable_text(job: dict[str, Any]) -> str:
+    analysis = job.get("analysis") or {}
+    job_info = job.get("job") or {}
+    content = job.get("content") or {}
+    sections = content.get("sections") or {}
+    parts = [
+        str(job.get("title") or ""),
+        str(job_info.get("category") or ""),
+        " ".join(job_info.get("sub_categories") or []),
+        " ".join(job.get("skills") or []),
+        str(analysis.get("role_category") or ""),
+        str(analysis.get("seniority") or ""),
+        " ".join(analysis.get("required_skills") or []),
+        " ".join(analysis.get("preferred_skills") or []),
+        " ".join(analysis.get("main_tasks") or []),
+        str(analysis.get("summary") or ""),
+        str(sections.get("core") or ""),
+    ]
+    return " ".join(parts).lower()
+
+
+def _strict_role_searchable_text(job: dict[str, Any]) -> str:
+    analysis = job.get("analysis") or {}
+    job_info = job.get("job") or {}
+    parts = [
+        str(job.get("title") or ""),
+        str(job_info.get("category") or ""),
+        " ".join(job_info.get("sub_categories") or []),
+        " ".join(job.get("skills") or []),
+        str(analysis.get("role_category") or ""),
+        " ".join(analysis.get("required_skills") or []),
+        " ".join(analysis.get("main_tasks") or []),
+    ]
+    return " ".join(parts).lower()
 
 
 def _searchable_text(job: dict[str, Any]) -> str:
