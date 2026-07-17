@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "src"))
@@ -188,13 +188,18 @@ def _run(command: list[str], history: PipelineRunHistory) -> None:
     )
     if completed.stdout:
         history.log(completed.stdout.rstrip())
-        print(completed.stdout, end="")
+        _safe_print(completed.stdout, end="")
     if completed.stderr:
         history.log(completed.stderr.rstrip())
-        print(completed.stderr, end="", file=sys.stderr)
+        _safe_print(completed.stderr, end="", file=sys.stderr)
+
+
+def _safe_print(value: str, end: str = "\n", file: TextIO | None = None) -> None:
+    output = file or sys.stdout
+    encoding = output.encoding or "utf-8"
+    safe_value = value.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    print(safe_value, end=end, file=output)
 
 
 if __name__ == "__main__":
     main()
-
-
