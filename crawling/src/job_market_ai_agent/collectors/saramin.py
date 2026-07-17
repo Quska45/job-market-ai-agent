@@ -69,6 +69,7 @@ class SaraminDetail:
     description: str | None = None
     raw_text: str | None = None
     image_urls: list[str] | None = None
+    sections: dict[str, str] | None = None
 
 
 class SaraminCollector(JobCollector):
@@ -294,6 +295,7 @@ def parse_saramin_detail(html: str) -> SaraminDetail:
         description=description,
         raw_text=raw_text,
         image_urls=_extract_detail_image_urls(soup),
+        sections=_extract_detail_sections(soup),
     )
 
 
@@ -343,6 +345,7 @@ def build_job_posting(item: SaraminListItem, detail: SaraminDetail) -> JobPostin
             description=detail.description or _build_list_description(item),
             raw_text=detail.raw_text,
             image_urls=detail.image_urls or [],
+            sections=detail.sections or {},
         ),
         crawl=CrawlMetadata(
             collected_at=datetime.now().astimezone(),
@@ -528,6 +531,45 @@ def _clean_job_description(text: str | None) -> str | None:
     cleaned = re.sub(r"\bTOP\b", " ", cleaned)
     cleaned = clean_text(cleaned)
     return cleaned or None
+
+
+def _extract_detail_sections(soup: BeautifulSoup) -> dict[str, str]:
+    sections: dict[str, str] = {}
+    mapping = {
+        "core": [".jv_cont", ".jv_summary"],
+        "application": [".jv_howto"],
+        "company": [".jv_company"],
+        "location": [".jv_location"],
+    }
+    for name, selectors in mapping.items():
+        for selector in selectors:
+            node = soup.select_one(selector)
+            if node is None:
+                continue
+            text = _clean_job_description(clean_text(node.get_text(" ", strip=True)))
+            if text:
+                sections[name] = text
+                break
+
+    core = sections.get("core", "")
+    requirements = _slice_between(core, "자격요건", "우대사항")
+    preferences = _slice_between(core, "우대사항", "급여")
+    if requirements:
+        sections["requirements"] = requirements
+    if preferences:
+        sections["preferences"] = preferences
+    return sections
+
+
+def _slice_between(text: str, start: str, end: str) -> str | None:
+    start_index = text.find(start)
+    if start_index < 0:
+        return None
+    start_index += len(start)
+    end_index = text.find(end, start_index)
+    sliced = text[start_index:end_index if end_index >= 0 else None]
+    sliced = clean_text(sliced)
+    return sliced or None
 def _extract_full_detail_text(soup: BeautifulSoup) -> str | None:
     root = soup.select_one(".wrap_jv_cont") or soup.select_one(".jv_cont")
     if root is None:
@@ -616,6 +658,8 @@ def _choose_company_name(list_company: str, detail_company: str | None) -> str:
     if detail_company and detail_company not in blocked_detail_values:
         return detail_company
     return list_company
+
+
 
 
 

@@ -54,6 +54,7 @@ class PostingContent(BaseModel):
     description: str | None = None
     raw_text: str | None = None
     image_urls: list[str] = Field(default_factory=list)
+    sections: dict[str, str] = Field(default_factory=dict)
 
 
 class CrawlMetadata(BaseModel):
@@ -79,6 +80,8 @@ class JobPosting(BaseModel):
     dates: PostingDates = Field(default_factory=PostingDates)
     content: PostingContent = Field(default_factory=PostingContent)
     crawl: CrawlMetadata
+
+
 
 
 
