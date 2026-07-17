@@ -239,6 +239,7 @@ def _parse_default_list_wrap(root: Tag, list_page: int | None = None) -> list[Sa
                 experience=_text_or_none(container.select_one(".career")),
                 education=_text_or_none(container.select_one(".education")),
                 deadline_text=_text_or_none(container.select_one(".support_info .date")),
+                job_sectors=_texts_from_selectors(container, [".job_sector span"]),
                 list_page=list_page,
             )
         )
@@ -615,6 +616,7 @@ def _choose_company_name(list_company: str, detail_company: str | None) -> str:
     if detail_company and detail_company not in blocked_detail_values:
         return detail_company
     return list_company
+
 
 
 

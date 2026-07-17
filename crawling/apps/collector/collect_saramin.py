@@ -1,8 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
 
 from job_market_ai_agent.collectors.saramin import SaraminCollector
 from job_market_ai_agent.storage.json_store import save_models_json
@@ -50,4 +53,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
 
