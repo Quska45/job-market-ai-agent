@@ -25,7 +25,7 @@ def answer_question_with_ollama(
     url: str = DEFAULT_OLLAMA_URL,
 ) -> str:
     if not results:
-        return "관련 채용공고를 찾지 못했습니다. 질문의 지역, 직무, 기술 키워드를 조금 더 구체적으로 입력해 주세요."
+        return "\uad00\ub828 \ucc44\uc6a9\uacf5\uace0\ub97c \ucc3e\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. \uc9c8\ubb38\uc758 \uc9c0\uc5ed, \uc9c1\ubb34, \uae30\uc220 \ud0a4\uc6cc\ub4dc\ub97c \uc870\uae08 \ub354 \uad6c\uccb4\uc801\uc73c\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694."
 
     timeout_seconds = float(os.getenv("OLLAMA_QA_TIMEOUT_SECONDS", DEFAULT_QA_TIMEOUT_SECONDS))
     try:
@@ -44,11 +44,11 @@ def answer_question_with_ollama(
         )
     except httpx.TimeoutException as error:
         raise QAResponseError(
-            f"Ollama 답변 생성이 {timeout_seconds:g}초 안에 끝나지 않았습니다. "
-            "검색 후보를 먼저 확인하거나 질문을 더 짧게 입력해 주세요."
+            f"Ollama \ub2f5\ubcc0 \uc0dd\uc131\uc774 {timeout_seconds:g}\ucd08 \uc548\uc5d0 \ub05d\ub098\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4. "
+            "\uac80\uc0c9 \ud6c4\ubcf4\ub97c \uba3c\uc800 \ud655\uc778\ud558\uac70\ub098 \uc9c8\ubb38\uc744 \ub354 \uc9e7\uac8c \uc785\ub825\ud574 \uc8fc\uc138\uc694."
         ) from error
     except httpx.ConnectError as error:
-        raise QAResponseError("Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해 주세요.") from error
+        raise QAResponseError("Ollama \uc11c\ubc84\uc5d0 \uc5f0\uacb0\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. Ollama\uac00 \uc2e4\ud589 \uc911\uc778\uc9c0 \ud655\uc778\ud574 \uc8fc\uc138\uc694.") from error
 
     if response.status_code >= 400:
         raise QAResponseError(f"Ollama API error {response.status_code}: {response.text[:500]}")
@@ -85,15 +85,52 @@ def build_qa_prompt(question: str, results: list[JobSearchResult]) -> str:
 
 
 def format_search_results(results: list[JobSearchResult]) -> str:
+    return format_search_summary_results(results)
+
+
+def format_search_summary_results(results: list[JobSearchResult]) -> str:
     if not results:
-        return "검색된 공고가 없습니다."
-    lines = ["검색 후보:"]
-    for index, result in enumerate(results, start=1):
-        lines.extend(_format_search_result(index, result))
+        return "\uac80\uc0c9\ub41c \uacf5\uace0\uac00 \uc5c6\uc2b5\ub2c8\ub2e4."
+    lines = ["\uac80\uc0c9 \ud6c4\ubcf4 Top 3:"]
+    for index, result in enumerate(results[:3], start=1):
+        lines.extend(_format_search_summary_result(index, result))
+    lines.append("")
+    lines.append("\uc0c1\uc138 \uc815\ubcf4: `detail \ubc88\ud638` \ub610\ub294 `!job detail \ubc88\ud638`")
     return "\n".join(lines)
 
 
-def _format_search_result(index: int, result: JobSearchResult) -> list[str]:
+def format_search_detail_result(result: JobSearchResult, index: int | None = None) -> str:
+    header_index = f"{index}. " if index is not None else ""
+    return "\n".join(_format_search_detail_lines(header_index, result))
+
+
+def _format_search_summary_result(index: int, result: JobSearchResult) -> list[str]:
+    job = result.job
+    company = job.get("company") or {}
+    location = job.get("location") or {}
+    employment = job.get("employment") or {}
+    dates = job.get("dates") or {}
+    analysis = job.get("analysis") or {}
+
+    title = _clean(job.get("title")) or "\uc81c\ubaa9 \uc5c6\uc74c"
+    company_name = _clean(company.get("name")) or "\ud68c\uc0ac\uba85 \uc5c6\uc74c"
+    deadline = _clean(dates.get("deadline_text")) or _clean(dates.get("deadline")) or "\ub9c8\uac10 \uc815\ubcf4 \uc5c6\uc74c"
+    skills = _join(job.get("skills"), limit=5) or _join(analysis.get("required_skills"), limit=5) or "-"
+    fit = _format_fit_score(analysis.get("fit_for_8_9_year_developer"))
+
+    return [
+        "",
+        f"{index}. {company_name} | {title}",
+        f"- \uc9c0\uc5ed: {_clean(location.get('summary')) or '-'}",
+        f"- \uacbd\ub825: {_clean(employment.get('experience')) or '-'}",
+        f"- \ub9c8\uac10: {deadline}",
+        f"- \uae30\uc220: {skills}",
+        f"- 8-9\ub144\ucc28 \uc801\ud569\ub3c4: {fit}",
+        f"- URL: {_clean(job.get('url')) or '-'}",
+    ]
+
+
+def _format_search_detail_lines(header_index: str, result: JobSearchResult) -> list[str]:
     job = result.job
     company = job.get("company") or {}
     location = job.get("location") or {}
@@ -102,40 +139,39 @@ def _format_search_result(index: int, result: JobSearchResult) -> list[str]:
     dates = job.get("dates") or {}
     analysis = job.get("analysis") or {}
 
-    title = _clean(job.get("title")) or "제목 없음"
-    company_name = _clean(company.get("name")) or "회사명 없음"
-    deadline = _clean(dates.get("deadline_text")) or _clean(dates.get("deadline")) or "마감 정보 없음"
-    posted_at = _clean(dates.get("posted_at")) or "시작일 없음"
-    deadline_at = _clean(dates.get("deadline")) or "마감일 없음"
+    title = _clean(job.get("title")) or "\uc81c\ubaa9 \uc5c6\uc74c"
+    company_name = _clean(company.get("name")) or "\ud68c\uc0ac\uba85 \uc5c6\uc74c"
+    deadline = _clean(dates.get("deadline_text")) or _clean(dates.get("deadline")) or "\ub9c8\uac10 \uc815\ubcf4 \uc5c6\uc74c"
+    posted_at = _clean(dates.get("posted_at")) or "\uc2dc\uc791\uc77c \uc5c6\uc74c"
+    deadline_at = _clean(dates.get("deadline")) or "\ub9c8\uac10\uc77c \uc5c6\uc74c"
     matched = _join(result.matched_terms, limit=6) or "-"
     skills = _join(job.get("skills"), limit=8)
     required_skills = _join(analysis.get("required_skills"), limit=6)
     preferred_skills = _join(analysis.get("preferred_skills"), limit=6)
     sub_categories = _join(job_info.get("sub_categories"), limit=6)
-    main_tasks = _join(analysis.get("main_tasks"), limit=3, max_item_chars=45)
+    main_tasks = _join(analysis.get("main_tasks"), limit=4, max_item_chars=55)
     fit = _format_fit_score(analysis.get("fit_for_8_9_year_developer"))
-    summary = _truncate(analysis.get("summary") or (job.get("content") or {}).get("summary"), 180)
-    reason = _truncate(analysis.get("career_fit_reason"), 160)
+    summary = _truncate(analysis.get("summary") or (job.get("content") or {}).get("summary"), 320)
+    reason = _truncate(analysis.get("career_fit_reason"), 240)
 
     lines = [
-        "",
-        f"{index}. [점수 {result.score}] {company_name} | {title}",
-        f"- 지역: {_clean(location.get('summary')) or '-'}",
-        f"- 주소: {_clean(location.get('address')) or '-'}",
-        f"- 직무: {_clean(job_info.get('category')) or '-'} / {sub_categories or '-'}",
-        f"- 경력/고용: {_clean(employment.get('experience')) or '-'} / {_clean(employment.get('type')) or '-'}",
-        f"- 기간: {posted_at} -> {deadline_at} ({deadline})",
-        f"- 기업: {_clean(company.get('size_type')) or '-'} / {_clean(company.get('employee_count')) or '-'}",
-        f"- 기술: {skills or required_skills or '-'}",
-        f"- 우대/관련: {preferred_skills or '-'}",
-        f"- 주요업무: {main_tasks or '-'}",
-        f"- 8-9년차 적합도: {fit}",
-        f"- 매칭: {matched}",
+        f"{header_index}{company_name} | {title}",
+        f"- \uc9c0\uc5ed: {_clean(location.get('summary')) or '-'}",
+        f"- \uc8fc\uc18c: {_clean(location.get('address')) or '-'}",
+        f"- \uc9c1\ubb34: {_clean(job_info.get('category')) or '-'} / {sub_categories or '-'}",
+        f"- \uacbd\ub825/\uace0\uc6a9: {_clean(employment.get('experience')) or '-'} / {_clean(employment.get('type')) or '-'}",
+        f"- \uae30\uac04: {posted_at} -> {deadline_at} ({deadline})",
+        f"- \uae30\uc5c5: {_clean(company.get('size_type')) or '-'} / {_clean(company.get('employee_count')) or '-'}",
+        f"- \uae30\uc220: {skills or required_skills or '-'}",
+        f"- \uc6b0\ub300/\uad00\ub828: {preferred_skills or '-'}",
+        f"- \uc8fc\uc694\uc5c5\ubb34: {main_tasks or '-'}",
+        f"- 8-9\ub144\ucc28 \uc801\ud569\ub3c4: {fit}",
+        f"- \ub9e4\uce6d: {matched}",
     ]
     if reason:
-        lines.append(f"- 적합 이유: {reason}")
+        lines.append(f"- \uc801\ud569 \uc774\uc720: {reason}")
     if summary:
-        lines.append(f"- 요약: {summary}")
+        lines.append(f"- \uc694\uc57d: {summary}")
     lines.append(f"- URL: {_clean(job.get('url')) or '-'}")
     return lines
 
@@ -147,14 +183,14 @@ def _join(value: Any, limit: int, max_item_chars: int = 30) -> str | None:
     visible = [item for item in items if item][:limit]
     if not visible:
         return None
-    suffix = f" 외 {len(items) - limit}개" if len(items) > limit else ""
+    suffix = f" \uc678 {len(items) - limit}\uac1c" if len(items) > limit else ""
     return ", ".join(visible) + suffix
 
 
 def _format_fit_score(value: Any) -> str:
     if isinstance(value, int | float):
         return f"{round(float(value) * 100)}%"
-    return "분석 없음"
+    return "\ubd84\uc11d \uc5c6\uc74c"
 
 
 def _truncate(value: Any, max_chars: int) -> str | None:
