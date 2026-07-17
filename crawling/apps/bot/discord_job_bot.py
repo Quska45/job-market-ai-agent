@@ -11,9 +11,9 @@ from job_market_ai_agent.bot.discord_job_bot import (  # noqa: E402
     DiscordBotConfigurationError,
     answer_discord_job_question_from_results,
     build_help_message,
-    extract_job_question,
     format_discord_job_candidates,
     load_discord_bot_config,
+    parse_job_command,
     search_discord_job_candidates,
     split_discord_message,
 )
@@ -42,21 +42,25 @@ def main() -> None:
     async def on_message(message) -> None:
         if message.author == client.user or message.author.bot:
             return
-        question = extract_job_question(message.content, config.command_prefix)
-        if question is None:
+        command = parse_job_command(message.content, config.command_prefix)
+        if command is None:
             return
-        if question in {"help", "도움말"}:
+        if command.question in {"help", "도움말"}:
             await message.channel.send(build_help_message(config.command_prefix))
             return
 
         try:
-            results = await asyncio.to_thread(search_discord_job_candidates, question, config)
-            for chunk in split_discord_message(format_discord_job_candidates(results)):
+            results = await asyncio.to_thread(search_discord_job_candidates, command.question, config)
+            for chunk in split_discord_message(
+                format_discord_job_candidates(results, include_llm_notice=command.use_llm)
+            ):
                 await message.channel.send(chunk)
+            if not command.use_llm:
+                return
             async with message.channel.typing():
                 response = await asyncio.to_thread(
                     answer_discord_job_question_from_results,
-                    question,
+                    command.question,
                     results,
                     config,
                 )
@@ -64,7 +68,7 @@ def main() -> None:
                 await message.channel.send(chunk)
         except Exception as error:
             await message.channel.send(
-                "상세 답변 생성 중 오류가 발생했습니다. "
+                "요청 처리 중 오류가 발생했습니다. "
                 f"검색 후보를 먼저 확인해 주세요. 오류: {error}"
             )
 
