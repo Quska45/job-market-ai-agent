@@ -149,6 +149,62 @@ class PipelineRunHistory:
         }
 
 
+def list_run_records(base_dir: Path, limit: int | None = None) -> list[dict[str, Any]]:
+    if not base_dir.exists():
+        return []
+    records = []
+    for run_json in sorted(base_dir.glob("*/run.json"), reverse=True):
+        records.append(load_run_record(run_json.parent.name, base_dir))
+    return records[:limit] if limit is not None else records
+
+
+def load_run_record(run_id: str, base_dir: Path) -> dict[str, Any]:
+    run_json = base_dir / run_id / "run.json"
+    if not run_json.exists():
+        raise FileNotFoundError(f"Run history not found: {run_json}")
+    with run_json.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def format_run_list(records: list[dict[str, Any]]) -> str:
+    headers = ["run_id", "status", "failed_step", "collected", "analyzed", "started_at"]
+    rows = [
+        [
+            _text(record.get("run_id")),
+            _text(record.get("status")),
+            _text(record.get("failed_step") or "-"),
+            _text(record.get("collected_jobs") if record.get("collected_jobs") is not None else "-"),
+            _text(record.get("analyzed_jobs") if record.get("analyzed_jobs") is not None else "-"),
+            _text(record.get("started_at")),
+        ]
+        for record in records
+    ]
+    return _format_table(headers, rows)
+
+
+def format_run_detail(record: dict[str, Any]) -> str:
+    lines = [
+        f"run_id: {_text(record.get('run_id'))}",
+        f"status: {_text(record.get('status'))}",
+        f"started_at: {_text(record.get('started_at'))}",
+        f"finished_at: {_text(record.get('finished_at'))}",
+        f"failed_step: {_text(record.get('failed_step') or '-')}",
+        f"error_message: {_text(record.get('error_message') or '-')}",
+        f"output_json: {_text(record.get('output_json') or '-')}",
+        f"report_path: {_text(record.get('report_path') or '-')}",
+        f"collected_jobs: {_text(record.get('collected_jobs') if record.get('collected_jobs') is not None else '-')}",
+        f"analyzed_jobs: {_text(record.get('analyzed_jobs') if record.get('analyzed_jobs') is not None else '-')}",
+        f"notified_channels: {', '.join(record.get('notified_channels') or []) or '-'}",
+        "steps:",
+    ]
+    for step in record.get("steps") or []:
+        duration = step.get("duration_seconds")
+        duration_text = f"{duration}s" if duration is not None else "-"
+        error_text = f" | error={step.get('error_message')}" if step.get("error_message") else ""
+        lines.append(f"- {step.get('name')}: {step.get('status')} ({duration_text}){error_text}")
+    return "\n".join(lines)
+
+
 def build_failure_summary(history: PipelineRunHistory) -> str:
     return "\n".join(
         [
@@ -159,3 +215,20 @@ def build_failure_summary(history: PipelineRunHistory) -> str:
             f"history: {history.run_dir / 'run.json'}",
         ]
     )
+
+
+def _format_table(headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        return "No run history found."
+    widths = [len(header) for header in headers]
+    for row in rows:
+        widths = [max(width, len(value)) for width, value in zip(widths, row, strict=True)]
+    lines = ["  ".join(header.ljust(width) for header, width in zip(headers, widths, strict=True))]
+    lines.append("  ".join("-" * width for width in widths))
+    for row in rows:
+        lines.append("  ".join(value.ljust(width) for value, width in zip(row, widths, strict=True)))
+    return "\n".join(lines)
+
+
+def _text(value: Any) -> str:
+    return "" if value is None else str(value)
