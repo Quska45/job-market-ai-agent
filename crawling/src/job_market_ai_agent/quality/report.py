@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from statistics import mean
@@ -24,6 +24,8 @@ REQUIRED_FIELD_PATHS = [
 @dataclass(frozen=True)
 class QualityReport:
     total_jobs: int
+    overall_fill_rate: float
+    overall_score: float
     field_fill_rates: dict[str, float]
     missing_counts: dict[str, int]
     description_min_length: int
@@ -52,9 +54,14 @@ def build_quality_report(rows: list[dict[str, Any]]) -> QualityReport:
         path: 0.0 if total == 0 else round((total - missing) / total, 4)
         for path, missing in missing_counts.items()
     }
+    filled_values = sum(total - missing for missing in missing_counts.values())
+    total_values = total * len(REQUIRED_FIELD_PATHS)
+    overall_fill_rate = 0.0 if total_values == 0 else round(filled_values / total_values, 4)
 
     return QualityReport(
         total_jobs=total,
+        overall_fill_rate=overall_fill_rate,
+        overall_score=round(overall_fill_rate * 100, 2),
         field_fill_rates=field_fill_rates,
         missing_counts=missing_counts,
         description_min_length=min(description_lengths, default=0),
@@ -69,6 +76,7 @@ def format_quality_report(report: QualityReport) -> str:
     lines = [
         "Job Data Quality Report",
         f"total_jobs: {report.total_jobs}",
+        f"overall_score: {report.overall_score:.2f}%",
         (
             "description_length: "
             f"min={report.description_min_length}, "
@@ -85,6 +93,52 @@ def format_quality_report(report: QualityReport) -> str:
         missing = report.missing_counts[path]
         lines.append(f"- {path}: {rate:.1f}% filled, missing={missing}")
     return "\n".join(lines)
+
+
+
+
+def build_job_quality(row: dict[str, Any]) -> dict[str, object]:
+    missing_fields = [
+        path for path in REQUIRED_FIELD_PATHS
+        if not _has_value(_value_at_path(row, path))
+    ]
+    total_fields = len(REQUIRED_FIELD_PATHS)
+    filled_fields = total_fields - len(missing_fields)
+    fill_rate = 0.0 if total_fields == 0 else round(filled_fields / total_fields, 4)
+    description = _value_at_path(row, "content.description") or ""
+    image_urls = _value_at_path(row, "content.image_urls") or []
+    return {
+        "score": round(fill_rate * 100, 2),
+        "fill_rate": fill_rate,
+        "filled_fields": filled_fields,
+        "total_fields": total_fields,
+        "missing_fields": missing_fields,
+        "description_length": len(description),
+        "image_count": len(image_urls),
+        "has_required_content": bool(description.strip()),
+    }
+
+
+def attach_job_quality(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {"quality": build_job_quality(row), **row}
+        for row in rows
+    ]
+def quality_report_to_dict(report: QualityReport) -> dict[str, object]:
+    return {
+        "total_jobs": report.total_jobs,
+        "overall_score": report.overall_score,
+        "overall_fill_rate": report.overall_fill_rate,
+        "description_length": {
+            "min": report.description_min_length,
+            "avg": report.description_avg_length,
+            "max": report.description_max_length,
+        },
+        "jobs_with_images": report.jobs_with_images,
+        "total_image_urls": report.total_image_urls,
+        "field_fill_rates": report.field_fill_rates,
+        "missing_counts": report.missing_counts,
+    }
 
 
 def _value_at_path(row: dict[str, Any], path: str) -> Any:
