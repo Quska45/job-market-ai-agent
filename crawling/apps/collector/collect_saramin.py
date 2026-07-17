@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import sys
@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
 
 from job_market_ai_agent.collectors.saramin import SaraminCollector
 from job_market_ai_agent.storage.json_store import save_models_json
+from job_market_ai_agent.storage.latest import default_latest_path, update_latest_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,6 +27,11 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default="data/raw/saramin",
         help="Directory where the JSON result will be saved.",
+    )
+    parser.add_argument(
+        "--latest-path",
+        default=None,
+        help="Path to update with the latest collected JSON. Defaults to <output-dir>/latest.json.",
     )
     return parser.parse_args()
 
@@ -46,9 +52,13 @@ def main() -> None:
 
     date_prefix = datetime.now().astimezone().strftime("%Y-%m-%d")
     safe_keyword = "".join(ch if ch.isalnum() else "_" for ch in args.keyword)
-    output_path = Path(args.output_dir) / f"{date_prefix}_{safe_keyword}.json"
+    output_dir = Path(args.output_dir)
+    output_path = output_dir / f"{date_prefix}_{safe_keyword}.json"
     save_models_json(output_path, postings)
+    latest_path = Path(args.latest_path) if args.latest_path else default_latest_path(output_dir)
+    update_latest_json(output_path, latest_path)
     print(f"saved {len(postings)} postings to {output_path}")
+    print(f"updated latest postings at {latest_path}")
 
 
 if __name__ == "__main__":

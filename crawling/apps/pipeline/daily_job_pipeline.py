@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -19,6 +19,7 @@ from job_market_ai_agent.pipeline.run_history import (  # noqa: E402
 )
 from job_market_ai_agent.reporting.export import default_output_path  # noqa: E402
 from job_market_ai_agent.reporting.summary import build_notification_summary  # noqa: E402
+from job_market_ai_agent.storage.latest import update_latest_json  # noqa: E402
 
 DEFAULT_SEARCH_URL = (
     "https://www.saramin.co.kr/zf_user/jobs/list/domestic?"
@@ -110,6 +111,11 @@ def main() -> None:
             )
             history.report_path = str(default_output_path(output_json, args.report_format))
 
+        with history.step("latest"):
+            latest_path = update_latest_json(output_json, _latest_output_path())
+            history.log(f"latest_updated: {latest_path}")
+            print(f"latest_updated: {latest_path}")
+
         with history.step("notify"):
             summary = build_notification_summary(_load_jobs(output_json))
             sent_channels = notify(summary, notify_channels)
@@ -171,6 +177,10 @@ def _expected_output_path(keyword: str) -> Path:
     date_prefix = datetime.now().astimezone().strftime("%Y-%m-%d")
     safe_keyword = "".join(ch if ch.isalnum() else "_" for ch in keyword)
     return Path("data/raw/saramin") / f"{date_prefix}_{safe_keyword}.json"
+
+
+def _latest_output_path() -> Path:
+    return Path("data/raw/saramin/latest.json")
 
 
 def _run(command: list[str], history: PipelineRunHistory) -> None:

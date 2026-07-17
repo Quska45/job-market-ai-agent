@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ from job_market_ai_agent.qa.answer import answer_question_with_ollama, format_se
 from job_market_ai_agent.qa.search import load_jobs, search_jobs
 
 
-DEFAULT_JOBS_INPUT = "data/raw/saramin/2026-07-17_AI.json"
+DEFAULT_JOBS_INPUT = "data/raw/saramin/latest.json"
 
 
 def answer_job_question(
