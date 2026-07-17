@@ -7,7 +7,8 @@ def test_search_jobs_scores_structured_fields() -> None:
             "source_job_id": "1",
             "title": "Backend Python Engineer",
             "company": {"name": "A"},
-            "location": {"summary": "Daejeon"},
+            "location": {"summary": "대전"},
+            "dates": {"deadline_text": "D-7"},
             "analysis": {
                 "role_category": "Backend Developer",
                 "required_skills": ["Python"],
@@ -18,15 +19,60 @@ def test_search_jobs_scores_structured_fields() -> None:
             "source_job_id": "2",
             "title": "Sales Manager",
             "company": {"name": "B"},
-            "location": {"summary": "Seoul"},
+            "location": {"summary": "서울"},
+            "dates": {"deadline_text": "D-7"},
             "analysis": {"role_category": "Sales", "fit_for_8_9_year_developer": 0.1},
         },
     ]
 
-    results = search_jobs("Daejeon Python Backend", jobs)
+    results = search_jobs("대전 Python Backend", jobs)
 
     assert [result.job["source_job_id"] for result in results] == ["1"]
     assert "python" in results[0].matched_terms
+
+
+def test_search_jobs_filters_by_region_and_deadline_type() -> None:
+    jobs = [
+        {
+            "source_job_id": "1",
+            "title": "AI Engineer",
+            "location": {"summary": "대전"},
+            "dates": {"deadline_text": "채용시 마감"},
+            "analysis": {"role_category": "AI Engineer", "fit_for_8_9_year_developer": 0.8},
+        },
+        {
+            "source_job_id": "2",
+            "title": "AI Engineer",
+            "location": {"summary": "세종"},
+            "dates": {"deadline_text": "D-7"},
+            "analysis": {"role_category": "AI Engineer", "fit_for_8_9_year_developer": 0.9},
+        },
+    ]
+
+    results = search_jobs("대전 채용시 AI 공고", jobs)
+
+    assert [result.job["source_job_id"] for result in results] == ["1"]
+
+
+def test_search_jobs_prioritizes_experienced_fit() -> None:
+    jobs = [
+        {
+            "source_job_id": "1",
+            "title": "AI Engineer",
+            "location": {"summary": "대전"},
+            "analysis": {"role_category": "AI Engineer", "fit_for_8_9_year_developer": 0.3},
+        },
+        {
+            "source_job_id": "2",
+            "title": "AI Engineer",
+            "location": {"summary": "대전"},
+            "analysis": {"role_category": "AI Engineer", "fit_for_8_9_year_developer": 1.0},
+        },
+    ]
+
+    results = search_jobs("대전 8-9년차 AI 공고", jobs)
+
+    assert [result.job["source_job_id"] for result in results] == ["2", "1"]
 
 
 def test_summarize_job_for_qa_truncates_description() -> None:
