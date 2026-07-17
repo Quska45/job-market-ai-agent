@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -89,13 +89,88 @@ def format_search_results(results: list[JobSearchResult]) -> str:
         return "검색된 공고가 없습니다."
     lines = ["검색 후보:"]
     for index, result in enumerate(results, start=1):
-        job = result.job
-        company = (job.get("company") or {}).get("name") or ""
-        title = job.get("title") or ""
-        deadline = (job.get("dates") or {}).get("deadline_text") or ""
-        url = job.get("url") or ""
-        lines.append(f"{index}. [{result.score}] {company} | {title} | {deadline} | {url}")
+        lines.extend(_format_search_result(index, result))
     return "\n".join(lines)
+
+
+def _format_search_result(index: int, result: JobSearchResult) -> list[str]:
+    job = result.job
+    company = job.get("company") or {}
+    location = job.get("location") or {}
+    job_info = job.get("job") or {}
+    employment = job.get("employment") or {}
+    dates = job.get("dates") or {}
+    analysis = job.get("analysis") or {}
+
+    title = _clean(job.get("title")) or "제목 없음"
+    company_name = _clean(company.get("name")) or "회사명 없음"
+    deadline = _clean(dates.get("deadline_text")) or _clean(dates.get("deadline")) or "마감 정보 없음"
+    posted_at = _clean(dates.get("posted_at")) or "시작일 없음"
+    deadline_at = _clean(dates.get("deadline")) or "마감일 없음"
+    matched = _join(result.matched_terms, limit=6) or "-"
+    skills = _join(job.get("skills"), limit=8)
+    required_skills = _join(analysis.get("required_skills"), limit=6)
+    preferred_skills = _join(analysis.get("preferred_skills"), limit=6)
+    sub_categories = _join(job_info.get("sub_categories"), limit=6)
+    main_tasks = _join(analysis.get("main_tasks"), limit=3, max_item_chars=45)
+    fit = _format_fit_score(analysis.get("fit_for_8_9_year_developer"))
+    summary = _truncate(analysis.get("summary") or (job.get("content") or {}).get("summary"), 180)
+    reason = _truncate(analysis.get("career_fit_reason"), 160)
+
+    lines = [
+        "",
+        f"{index}. [점수 {result.score}] {company_name} | {title}",
+        f"- 지역: {_clean(location.get('summary')) or '-'}",
+        f"- 주소: {_clean(location.get('address')) or '-'}",
+        f"- 직무: {_clean(job_info.get('category')) or '-'} / {sub_categories or '-'}",
+        f"- 경력/고용: {_clean(employment.get('experience')) or '-'} / {_clean(employment.get('type')) or '-'}",
+        f"- 기간: {posted_at} -> {deadline_at} ({deadline})",
+        f"- 기업: {_clean(company.get('size_type')) or '-'} / {_clean(company.get('employee_count')) or '-'}",
+        f"- 기술: {skills or required_skills or '-'}",
+        f"- 우대/관련: {preferred_skills or '-'}",
+        f"- 주요업무: {main_tasks or '-'}",
+        f"- 8-9년차 적합도: {fit}",
+        f"- 매칭: {matched}",
+    ]
+    if reason:
+        lines.append(f"- 적합 이유: {reason}")
+    if summary:
+        lines.append(f"- 요약: {summary}")
+    lines.append(f"- URL: {_clean(job.get('url')) or '-'}")
+    return lines
+
+
+def _join(value: Any, limit: int, max_item_chars: int = 30) -> str | None:
+    if not isinstance(value, list):
+        return None
+    items = [_truncate(item, max_item_chars) for item in value if _clean(item)]
+    visible = [item for item in items if item][:limit]
+    if not visible:
+        return None
+    suffix = f" 외 {len(items) - limit}개" if len(items) > limit else ""
+    return ", ".join(visible) + suffix
+
+
+def _format_fit_score(value: Any) -> str:
+    if isinstance(value, int | float):
+        return f"{round(float(value) * 100)}%"
+    return "분석 없음"
+
+
+def _truncate(value: Any, max_chars: int) -> str | None:
+    text = _clean(value)
+    if text is None:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
+
+
+def _clean(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    return text or None
 
 
 def _system_prompt() -> str:
